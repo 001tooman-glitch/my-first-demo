@@ -1,1 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>My First 4k Intro</title>
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        const canvas = document.getElementById('c');
+        const gl = canvas.getContext('webgl');
+
+        // Вершинный шейдер (просто рисует плоскость на весь экран)
+        const vsSource = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+
+        // Фрагментный шейдер (генерирует 3D графику математикой в реальном времени)
+        const fsSource = `
+            precision highp float;
+            uniform vec2 u_res;
+            uniform float u_time;
+
+            // Функция расстояния до бесконечного туннеля
+            float tunnel(vec3 p) {
+                float a = atan(p.y, p.x);
+                float r = length(p.xy);
+                return 1.0 - r + sin(a * 5.0 + u_time * 2.0) * 0.1;
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - u_res * 0.5) / u_res.y;
+                vec3 ro = vec3(0.0, 0.0, u_time * 2.0); // Камера движется вперед
+                vec3 rd = normalize(vec3(uv, 1.0));    // Луч из камеры
+                
+                float d = 0.0, t = 0.0;
+                for (int i = 0; i < 64; i++) {
+                    vec3 p = ro + rd * t;
+                    p.z = mod(p.z, 2.0) - 1.0; // Бесконечное повторение по оси Z
+                    d = tunnel(p);
+                    if (d < 0.001 || t > 20.0) break;
+                    t += d * 0.5;
+                }
+
+                // Туман и неоновый цвет в зависимости от глубины (t)
+                vec3 color = vec3(sin(u_time), cos(u_time * 0.5), 1.0) * (1.0 / (1.0 + t * t * 0.1));
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        // Сборка шейдерной программы
+        const vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, vsSource); gl.compileShader(vs);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, fsSource); gl.compileShader(fs);
+        const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+        gl.useProgram(prog);
+
+        // Буфер для отрисовки полноэкранного полигона
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+        const pos = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(pos);
+        gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+        const uRes = gl.getUniformLocation(prog, "u_res");
+        const uTime = gl.getUniformLocation(prog, "u_time");
+
+        // Цикл рендеринга
+        function render(time) {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, time * 0.001);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
 
