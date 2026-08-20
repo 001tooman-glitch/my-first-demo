@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Super-Realistic 3D Raymarched Cave</title>
+    <title>Realistic 3D Universe Flight</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
         canvas { width: 100vw; height: 100vh; display: block; }
@@ -16,20 +16,20 @@
 
         const vsSource = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
 
-        // Тяжелая шейдерная математика для фотореалистичного рендеринга 3D-пространства
+        // Шейдер объемного рендеринга глубокого космоса (Volume Rendering / Raymarching)
         const fsSource = `
             precision highp float;
             uniform vec2 u_res;
             uniform float u_time;
 
-            // Генератор псевдослучайного рельефа (шум для реалистичных скал)
+            // Хэш-функция для генерации звездной пыли
             float hash(vec3 p) {
                 p = fract(p * vec3(443.8975, 397.2973, 491.1871));
                 p += dot(p.xyz, p.yzx + 19.19);
                 return fract(p.x * p.y * p.z);
             }
 
-            // Сглаженный трехмерный шум
+            // Трехмерный сглаженный шум
             float noise(vec3 p) {
                 vec3 i = floor(p); vec3 f = fract(p);
                 f = f*f*(3.0-2.0*f);
@@ -39,91 +39,82 @@
                                mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
             }
 
-            // Карта высот и геометрия бесконечной пещеры
-            float map(vec3 p) {
-                // Создаем форму туннеля/пещеры с помощью синусов
-                float tunnel = 4.0 - (length(p.xy + vec2(sin(p.z*0.5)*1.5, cos(p.z*0.3)*0.5)));
-                
-                // Накладываем слои шума для создания текстуры дикого камня и скал
-                float rockNoise = noise(p * 1.5) * 0.6 + noise(p * 4.0) * 0.25 + noise(p * 10.0) * 0.08;
-                
-                // Прямой пол с "неоновой лавой" на дне пещеры
-                float floorLevel = p.y + 2.5 + noise(p*2.0)*0.1;
-                
-                return min(floorLevel, tunnel - rockNoise);
-            }
-
-            // Вычисление нормалей для честного расчета освещения и теней
-            vec3 getNormal(vec3 p) {
-                vec2 e = vec2(0.005, 0.0);
-                return normalize(vec3(map(p+e.xyy) - map(p-e.xyy),
-                                     map(p+e.yxy) - map(p-e.yxy),
-                                     map(p+e.yyx) - map(p-e.yyx)));
+            // Фрактальный шум для создания реалистичных газовых облаков и туманностей
+            float fbm(vec3 p) {
+                float v = 0.0;
+                float amplitude = 0.5;
+                for (int i = 0; i < 4; i++) {
+                    v += amplitude * noise(p);
+                    p *= 2.5;
+                    amplitude * = 0.45;
+                }
+                return v;
             }
 
             void main() {
                 vec2 uv = (gl_FragCoord.xy - u_res * 0.5) / u_res.y;
                 
-                // Траектория движения камеры вперед сквозь каньон
-                vec3 ro = vec3(sin(u_time * 0.5) * 1.5, cos(u_time * 0.3) * 0.5, u_time * 3.5);
-                vec3 target = vec3(sin((u_time + 1.0) * 0.5) * 1.5, cos((u_time + 1.0) * 0.3) * 0.5, ro.z + 5.0);
+                // Скорость движения сквозь вселенную
+                float speed = u_time * 1.8;
                 
-                // Направление взгляда
-                vec3 look = normalize(target - ro);
-                vec3 right = normalize(cross(look, vec3(0.0, 1.0, 0.0)));
-                vec3 up = cross(right, look);
-                vec3 rd = normalize(uv.x * right + uv.y * up + look * 1.0); // Луч из пикселя
+                // Камера летит вперед с легким покачиванием
+                vec3 ro = vec3(sin(u_time * 0.2) * 0.8, cos(u_time * 0.15) * 0.5, speed);
+                vec3 rd = normalize(vec3(uv, 1.1)); // Луч из камеры в пространство
 
-                float t = 0.0, d = 0.0;
-                for (int i = 0; i < 80; i++) {
-                    d = map(ro + rd * t);
-                    if (d < 0.002 || t > 35.0) break;
-                    t += d * 0.6; // Шаг марширования луча
+                // Вращение камеры вокруг оси Z для кинематографичности эффекта полета
+                float roll = u_time * 0.05;
+                mat2 rot = mat2(cos(roll), -sin(roll), sin(roll), cos(roll));
+                rd.xy *= rot;
+
+                // Базовый цвет космоса
+                vec3 finalColor = vec3(0.0);
+                
+                // 1. Сверхдальний план: Математические мерцающие звезды
+                float stars = hash(floor(rd * 350.0));
+                if (stars > 0.994) {
+                    float m = sin(u_time * 3.0 + stars * 100.0) * 0.5 + 0.5;
+                    finalColor += vec3(stars) * m * 0.8; // Мерцание звезд
                 }
 
-                vec3 p = ro + rd * t;
-                vec3 color = vec3(0.005, 0.008, 0.015); // Темнота пещеры (базовый рассеянный свет)
+                // 2. Объемный маршинг (Volume Rendering) сквозь космические туманности
+                float t = 0.0;
+                float maxDist = 12.0;
+                float stepSize = 0.25; // Размер шага по газу
+                
+                vec3 nebulaColor1 = vec3(0.1, 0.4, 0.9); // Синий неон
+                vec3 nebulaColor2 = vec3(0.9, 0.1, 0.5); // Пурпурный космос
 
-                if (t < 35.0) {
-                    vec3 n = getNormal(p);
+                for (int i = 0; i < 40; i++) {
+                    if (t > maxDist) break;
                     
-                    // Позиция светящейся точки (неоновый источник, летящий перед камерой)
-                    vec3 lightPos = ro + vec3(0.0, 1.0, 2.0);
-                    vec3 lightDir = normalize(lightPos - p);
+                    vec3 p = ro + rd * t;
                     
-                    // Расчет диффузного освещения скал
-                    float diff = max(dot(n, lightDir), 0.0);
-                    float lightDist = length(lightPos - p);
-                    float atten = 1.0 / (1.0 + lightDist * lightDist * 0.15); // Затухание света с расстоянием
+                    // Вычисляем плотность космического газа в этой точке пространства
+                    float density = fbm(p * 0.4 + vec3(0.0, 0.0, -u_time * 0.05));
                     
-                    // Цвет камня под фонарем
-                    vec3 rockColor = mix(vec3(0.2, 0.15, 0.12), vec3(0.1, 0.12, 0.15), noise(p));
-                    color = rockColor * diff * atten * 4.0;
+                    // Отрезаем пустоты, оставляя только сочные скопления облаков
+                    density = smoothstep(0.42, 0.7, density);
 
-                    // Добавляем суперреалистичное отражение света от мокрых поверхностей (Specular)
-                    vec3 ref = reflect(-lightDir, n);
-                    float spec = pow(max(dot(ref, -rd), 0.0), 16.0);
-                    color += vec3(0.8, 0.9, 1.0) * spec * atten * 1.5;
+                    if (density > 0.01) {
+                        // Динамический цвет туманности, зависящий от координат пространства
+                        vec3 currentNebula = mix(nebulaColor1, nebulaColor2, sin(p.z * 0.2) * 0.5 + 0.5);
+                        
+                        // Добавляем эффект внутреннего свечения звездных скоплений внутри облака
+                        currentNebula += vec3(1.0, 0.7, 0.4) * (noise(p * 3.0) * 0.4);
 
-                    // Генерация неонового свечения био-жидкости на полу пещеры
-                    if (p.y < -2.2) {
-                        // Яркая бирюзово-зеленая река
-                        vec3 neonColor = mix(vec3(0.0, 1.0, 0.6), vec3(0.0, 0.4, 1.0), sin(p.z*0.2 + u_time)*0.5+0.5);
-                        color += neonColor * 2.0 * (1.0 - smoothstep(-2.5, -2.2, p.y));
+                        // Интегрируем плотность газа (свет накапливается, создавая объем)
+                        float alpha = density * stepSize * 1.2;
+                        finalColor += currentNebula * alpha * (1.0 - t / maxDist);
                     }
                     
-                    // Отражение неонового пола на стенах пещеры снизу
-                    float floorGlow = max(0.0, -n.y) * 0.4 * (1.0 / (1.0 + (p.y + 2.5)*(p.y + 2.5)));
-                    color += vec3(0.0, 0.8, 0.5) * floorGlow;
+                    t += stepSize;
                 }
 
-                // Эффект объемного густого тумана в глубине каньона (атмосферное рассеяние)
-                color = mix(color, vec3(0.02, 0.03, 0.06), 1.0 - exp(-0.07 * t * t));
-                
-                // Кинематографическая гамма-коррекция (делает картинку сочной)
-                color = pow(color, vec3(0.4545));
+                // Реалистичная цветокоррекция (контраст глубокого космоса)
+                finalColor = smoothstep(0.0, 1.0, finalColor);
+                finalColor = pow(finalColor, vec3(0.4545)); // Гамма
 
-                gl_FragColor = vec4(color, 1.0);
+                gl_FragColor = vec4(finalColor, 1.0);
             }
         `;
 
