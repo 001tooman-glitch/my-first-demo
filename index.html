@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>My First 4k Intro</title>
+    <title>Solar System 3D Demo</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
         canvas { width: 100vw; height: 100vh; display: block; }
@@ -12,70 +12,178 @@
     <canvas id="c"></canvas>
     <script>
         const canvas = document.getElementById('c');
-        const gl = canvas.getContext('webgl');
+        const ctx = canvas.getContext('2d');
 
-        // Вершинный шейдер (просто рисует плоскость на весь экран)
-        const vsSource = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+        // Данные планет: [радиус сферы, радиус орбиты, скорость орбиты, скорость оси, цвет]
+        const planets = [
+            { name: "Меркурий", r: 4,  dist: 60,  vOrb: 0.04,  vAx: 0.01,  c: "#888" },
+            { name: "Венера",   r: 7,  dist: 90,  vOrb: 0.015, vAx: 0.002, c: "#e3bb76" },
+            { name: "Земля",    r: 8,  dist: 130, vOrb: 0.01,  vAx: 0.05,  c: "#5391f5" },
+            { name: "Марс",     r: 6,  dist: 170, vOrb: 0.008, vAx: 0.04,  c: "#c1440e" },
+            { name: "Юпитер",   r: 18, dist: 230, vOrb: 0.002, vAx: 0.1,   c: "#b07f35" },
+            { name: "Сатурн",   r: 15, dist: 290, vOrb: 0.0009,vAx: 0.09,  c: "#e2bf7d", ring: true },
+            { name: "Уран",     r: 11, dist: 340, vOrb: 0.0004,vAx: 0.07,  c: "#4b70dd" },
+            { name: "Нептун",   r: 10, dist: 390, vOrb: 0.0001,vAx: 0.07,  c: "#274687" }
+        ];
 
-        // Фрагментный шейдер (генерирует 3D графику математикой в реальном времени)
-        const fsSource = `
-            precision highp float;
-            uniform vec2 u_res;
-            uniform float u_time;
+        // Генерация звезд Галактики на фоне (псевдо-3D)
+        const stars = [];
+        for(let i=0; i<600; i++) {
+            // Распределяем звезды в форме спиральной галактики
+            let angle = Math.random() * Math.PI * 2;
+            let dist = Math.pow(Math.random(), 2) * 500 + 10;
+            let spiral = angle + dist * 0.015; 
+            stars.push({
+                x: Math.cos(spiral) * dist + (Math.random() - 0.5) * 20,
+                y: (Math.random() - 0.5) * 30, // Сплюснутость галактики по вертикали
+                z: Math.sin(spiral) * dist + (Math.random() - 0.5) * 20,
+                size: Math.random() * 1.5 + 0.5
+            });
+        }
 
-            // Функция расстояния до бесконечного туннеля
-            float tunnel(vec3 p) {
-                float a = atan(p.y, p.x);
-                float r = length(p.xy);
-                return 1.0 - r + sin(a * 5.0 + u_time * 2.0) * 0.1;
+        let time = 0;
+
+        function drawSphere(x, y, r, color, rotationAngle) {
+            // Отрисовка сферы с мягкой 3D-тенями (объем)
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.clip();
+
+            // Базовый цвет планеты
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            // Текстурные полосы, показывающие вращение вокруг своей оси
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
+            ctx.lineWidth = r * 0.15;
+            ctx.setLineDash([r * 0.4, r * 0.3]);
+            for (let i = -r; i < r; i += r * 0.4) {
+                ctx.beginPath();
+                ctx.arc(x + Math.sin(rotationAngle)*r*0.2, y + i, r, 0, Math.PI, true);
+                ctx.stroke();
             }
 
-            void main() {
-                vec2 uv = (gl_FragCoord.xy - u_res * 0.5) / u_res.y;
-                vec3 ro = vec3(0.0, 0.0, u_time * 2.0); // Камера движется вперед
-                vec3 rd = normalize(vec3(uv, 1.0));    // Луч из камеры
+            // Наложение объемной тени от Солнца
+            let shadow = ctx.createRadialGradient(x - r*0.3, y - r*0.3, r*0.1, x, y, r);
+            shadow.addColorStop(0, "rgba(255,255,255,0.2)");
+            shadow.addColorStop(0.5, "rgba(0,0,0,0)");
+            shadow.addColorStop(1, "rgba(0,0,0,0.9)");
+            ctx.fillStyle = shadow;
+            ctx.beginPath();
+            ctx.arc(x, y, r + 1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function render() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            
+            // Наклон всей системы для кинематографичного 3D вида (псевдо-3D проекция)
+            const tiltCos = Math.cos(1.1); 
+            const tiltSin = Math.sin(1.1);
+
+            // Очистка экрана
+            ctx.fillStyle = "#020208";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Рисуем Млечный Путь (Галактику) на заднем плане
+            time += 0.02;
+            stars.forEach(s => {
+                // Медленное вращение галактики
+                let rotX = s.x * Math.cos(time * 0.05) - s.z * Math.sin(time * 0.05);
+                let rotZ = s.x * Math.sin(time * 0.05) + s.z * Math.cos(time * 0.05);
                 
-                float d = 0.0, t = 0.0;
-                for (int i = 0; i < 64; i++) {
-                    vec3 p = ro + rd * t;
-                    p.z = mod(p.z, 2.0) - 1.0; // Бесконечное повторение по оси Z
-                    d = tunnel(p);
-                    if (d < 0.001 || t > 20.0) break;
-                    t += d * 0.5;
+                // Проекция в 2D
+                let screenX = cx + rotX;
+                let screenY = cy + s.y * tiltCos - rotZ * tiltSin;
+                
+                let alpha = Math.max(0.1, 1 - (dist = Math.sqrt(rotX*rotX + rotZ*rotZ)) / 500);
+                ctx.fillStyle = `rgba(200, 220, 255, ${alpha})`;
+                ctx.fillRect(screenX, screenY, s.size, s.size);
+            });
+
+            // 2. Рисуем пылающее Солнце
+            let sunGlow = ctx.createRadialGradient(cx, cy, 5, cx, cy, 45);
+            sunGlow.addColorStop(0, "#fff");
+            sunGlow.addColorStop(0.2, "#ffdd44");
+            sunGlow.addColorStop(0.6, "rgba(255,68,0,0.4)");
+            sunGlow.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.fillStyle = sunGlow;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 45, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 3. Расчет и отрисовка орбит и планет
+            // Сортируем планеты по глубине (Z), чтобы ближние перекрывали дальние
+            const renderQueue = [];
+
+            planets.forEach(p => {
+                // Угол положения на орбите
+                let angle = time * p.vOrb;
+                
+                // 3D Координаты в пространстве системы
+                let x3d = Math.cos(angle) * p.dist;
+                let z3d = Math.sin(angle) * p.dist;
+                let y3d = 0; 
+
+                // Проекция координат с учетом наклона камеры
+                let screenX = cx + x3d;
+                let screenY = cy + y3d * tiltCos - z3d * tiltSin;
+
+                renderQueue.push({
+                    x: screenX,
+                    y: screenY,
+                    z: z3d, // Используем для сортировки слоев
+                    r: p.r,
+                    color: p.c,
+                    rot: time * p.vAx,
+                    hasRing: p.ring,
+                    dist: p.dist
+                });
+
+                // Отрисовка тонких линий орбит
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, p.dist, p.dist * tiltSin, 0, 0, Math.PI * 2);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            });
+
+            // Сортировка: сначала рисуем то, что сзади (z3d < 0), потом то, что спереди (z3d > 0)
+            renderQueue.sort((a, b) => a.z - b.z);
+
+            renderQueue.forEach(p => {
+                // Если планета с кольцами (Сатурн), рисуем заднюю часть колец
+                if (p.hasRing) {
+                    ctx.strokeStyle = "rgba(210, 180, 140, 0.5)";
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.ellipse(p.x, p.y, p.r * 1.8, p.r * 0.4, 0.2, Math.PI, 0);
+                    ctx.stroke();
                 }
 
-                // Туман и неоновый цвет в зависимости от глубины (t)
-                vec3 color = vec3(sin(u_time), cos(u_time * 0.5), 1.0) * (1.0 / (1.0 + t * t * 0.1));
-                gl_FragColor = vec4(color, 1.0);
-            }
-        `;
+                // Рисуем саму планету с вращением
+                drawSphere(p.x, p.y, p.r, p.color, p.rot);
 
-        // Сборка шейдерной программы
-        const vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, vsSource); gl.compileShader(vs);
-        const fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, fsSource); gl.compileShader(fs);
-        const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
-        gl.useProgram(prog);
+                // Передняя часть колец Сатурна (чтобы перекрывала планету)
+                if (p.hasRing) {
+                    ctx.strokeStyle = "rgba(210, 180, 140, 0.8)";
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.ellipse(p.x, p.y, p.r * 1.8, p.r * 0.4, 0.2, 0, Math.PI);
+                    ctx.stroke();
+                }
+            });
 
-        // Буфер для отрисовки полноэкранного полигона
-        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
-        const pos = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(pos);
-        gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
-
-        const uRes = gl.getUniformLocation(prog, "u_res");
-        const uTime = gl.getUniformLocation(prog, "u_time");
-
-        // Цикл рендеринга
-        function render(time) {
-            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-            gl.viewport(0, 0, canvas.width, canvas.height);
-            gl.uniform2f(uRes, canvas.width, canvas.height);
-            gl.uniform1f(uTime, time * 0.001);
-            gl.drawArrays(gl.TRIANGLES, 0, 6);
             requestAnimationFrame(render);
         }
+
         requestAnimationFrame(render);
     </script>
 </body>
 </html>
-
