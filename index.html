@@ -2,9 +2,9 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Digital Evolution: Neo-Fractal</title>
+    <title>Super-Realistic 3D Raymarched Cave</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #030208; width: 100%; height: 100%; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
         canvas { width: 100vw; height: 100vh; display: block; }
     </style>
 </head>
@@ -12,101 +12,142 @@
     <canvas id="c"></canvas>
     <script>
         const canvas = document.getElementById('c');
-        const ctx = canvas.getContext('2d');
+        const gl = canvas.getContext('webgl');
 
-        let time = 0;
-        
-        // Генетические параметры биоморфа (меняются в ходе «эволюции»)
-        let genes = {
-            angleStep: 0.4,
-            lengthRatio: 0.75,
-            maxDepth: 10,
-            hueBase: 180,
-            pulseSpeed: 1.2
-        };
+        const vsSource = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
 
-        // Плавное изменение генов со временем (мутация)
-        function mutateGenes(t) {
-            genes.angleStep = 0.35 + Math.sin(t * 0.2) * 0.15 + Math.cos(t * 0.05) * 0.1;
-            genes.lengthRatio = 0.72 + Math.sin(t * 0.1) * 0.04;
-            genes.maxDepth = 9 + Math.floor((Math.sin(t * 0.05) + 1) * 1.5); // Дерево растет и усложняется
-            genes.hueBase = (t * 10) % 360; // Плавная мутация цвета структуры
-        }
+        // Тяжелая шейдерная математика для фотореалистичного рендеринга 3D-пространства
+        const fsSource = `
+            precision highp float;
+            uniform vec2 u_res;
+            uniform float u_time;
 
-        // Рекурсивная функция выращивания фрактального биоморфа
-        function drawBranch(x, y, length, angle, depth, pulse) {
-            if (depth > genes.maxDepth) return;
-
-            // Вычисляем конечную точку ветви с учетом био-пульсации
-            const dynamicLength = length * (1 + Math.sin(time * genes.pulseSpeed + depth) * pulse);
-            const x2 = x + Math.cos(angle) * dynamicLength;
-            const y2 = y + Math.sin(angle) * dynamicLength;
-
-            // Динамический неоновый цвет для каждого уровня вложенности
-            const branchHue = (genes.hueBase + depth * 15) % 360;
-            const alpha = 1.0 - (depth / genes.maxDepth) * 0.6; // Прозрачность к кончикам
-            
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(x2, y2);
-            
-            // Толщина уменьшается с ростом глубины
-            ctx.lineWidth = Math.max(0.5, (genes.maxDepth - depth) * 0.8);
-            ctx.strokeStyle = `hsla(${branchHue}, 90%, 65%, ${alpha})`;
-            ctx.shadowColor = `hsl(${branchHue}, 100%, 50%)`;
-            ctx.shadowBlur = depth < 4 ? 15 : 0; // Свечение только на основных ветвях для оптимизации
-            ctx.stroke();
-
-            // Генетическое ветвление: порождаем новые цифровые побеги
-            // Добавляем легкую асимметрию за счет времени
-            const angleOffset = genes.angleStep + Math.sin(time * 0.5 + depth) * 0.03;
-
-            // Левая ветвь
-            drawBranch(x2, y2, length * genes.lengthRatio, angle - angleOffset, depth + 1, pulse);
-            // Правая ветвь
-            drawBranch(x2, y2, length * genes.lengthRatio, angle + angleOffset, depth + 1, pulse);
-            
-            // Центральный редкий побег (эффект усложнения мутации на пике эволюции)
-            if (depth > 3 && depth % 3 === 0) {
-                drawBranch(x2, y2, length * 0.4, angle + Math.sin(time)*0.1, depth + 2, pulse);
-            }
-        }
-
-        function render() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            time += 0.015;
-
-            // Шлейф старых кадров для эффекта размытия движения (motion blur)
-            ctx.fillStyle = "rgba(3, 2, 8, 0.08)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Запускаем мутацию ДНК фрактала
-            mutateGenes(time);
-
-            const startX = canvas.width / 2;
-            const startY = canvas.height * 0.82; // Точка роста
-            const initialLength = Math.min(canvas.width, canvas.height) * 0.18;
-
-            // Сброс тени перед отрисовкой во избежание багов холста
-            ctx.shadowBlur = 0; 
-
-            // Рисуем светящиеся споры на фоне (цифровая питательная среда)
-            ctx.fillStyle = `rgba(255, 255, 255, 0.15)`;
-            for(let i = 0; i < 15; i++) {
-                let sX = (Math.sin(i * 123 + time * 0.2) * 0.5 + 0.5) * canvas.width;
-                let sY = (Math.cos(i * 456 + time * 0.3) * 0.5 + 0.5) * canvas.height;
-                ctx.fillRect(sX, sY, 1.5, 1.5);
+            // Генератор псевдослучайного рельефа (шум для реалистичных скал)
+            float hash(vec3 p) {
+                p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+                p += dot(p.xyz, p.yzx + 19.19);
+                return fract(p.x * p.y * p.z);
             }
 
-            // Выращиваем биоморф вверх (-Math.PI / 2)
-            // Коэффициент пульсации 0.08 задает амплитуду "дыхания"
-            drawBranch(startX, startY, initialLength, -Math.PI / 2, 0, 0.08);
+            // Сглаженный трехмерный шум
+            float noise(vec3 p) {
+                vec3 i = floor(p); vec3 f = fract(p);
+                f = f*f*(3.0-2.0*f);
+                return mix(mix(mix(hash(i+vec3(0,0,0)), hash(i+vec3(1,0,0)), f.x),
+                               mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+                           mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+                               mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+            }
 
+            // Карта высот и геометрия бесконечной пещеры
+            float map(vec3 p) {
+                // Создаем форму туннеля/пещеры с помощью синусов
+                float tunnel = 4.0 - (length(p.xy + vec2(sin(p.z*0.5)*1.5, cos(p.z*0.3)*0.5)));
+                
+                // Накладываем слои шума для создания текстуры дикого камня и скал
+                float rockNoise = noise(p * 1.5) * 0.6 + noise(p * 4.0) * 0.25 + noise(p * 10.0) * 0.08;
+                
+                // Прямой пол с "неоновой лавой" на дне пещеры
+                float floorLevel = p.y + 2.5 + noise(p*2.0)*0.1;
+                
+                return min(floorLevel, tunnel - rockNoise);
+            }
+
+            // Вычисление нормалей для честного расчета освещения и теней
+            vec3 getNormal(vec3 p) {
+                vec2 e = vec2(0.005, 0.0);
+                return normalize(vec3(map(p+e.xyy) - map(p-e.xyy),
+                                     map(p+e.yxy) - map(p-e.yxy),
+                                     map(p+e.yyx) - map(p-e.yyx)));
+            }
+
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - u_res * 0.5) / u_res.y;
+                
+                // Траектория движения камеры вперед сквозь каньон
+                vec3 ro = vec3(sin(u_time * 0.5) * 1.5, cos(u_time * 0.3) * 0.5, u_time * 3.5);
+                vec3 target = vec3(sin((u_time + 1.0) * 0.5) * 1.5, cos((u_time + 1.0) * 0.3) * 0.5, ro.z + 5.0);
+                
+                // Направление взгляда
+                vec3 look = normalize(target - ro);
+                vec3 right = normalize(cross(look, vec3(0.0, 1.0, 0.0)));
+                vec3 up = cross(right, look);
+                vec3 rd = normalize(uv.x * right + uv.y * up + look * 1.0); // Луч из пикселя
+
+                float t = 0.0, d = 0.0;
+                for (int i = 0; i < 80; i++) {
+                    d = map(ro + rd * t);
+                    if (d < 0.002 || t > 35.0) break;
+                    t += d * 0.6; // Шаг марширования луча
+                }
+
+                vec3 p = ro + rd * t;
+                vec3 color = vec3(0.005, 0.008, 0.015); // Темнота пещеры (базовый рассеянный свет)
+
+                if (t < 35.0) {
+                    vec3 n = getNormal(p);
+                    
+                    // Позиция светящейся точки (неоновый источник, летящий перед камерой)
+                    vec3 lightPos = ro + vec3(0.0, 1.0, 2.0);
+                    vec3 lightDir = normalize(lightPos - p);
+                    
+                    // Расчет диффузного освещения скал
+                    float diff = max(dot(n, lightDir), 0.0);
+                    float lightDist = length(lightPos - p);
+                    float atten = 1.0 / (1.0 + lightDist * lightDist * 0.15); // Затухание света с расстоянием
+                    
+                    // Цвет камня под фонарем
+                    vec3 rockColor = mix(vec3(0.2, 0.15, 0.12), vec3(0.1, 0.12, 0.15), noise(p));
+                    color = rockColor * diff * atten * 4.0;
+
+                    // Добавляем суперреалистичное отражение света от мокрых поверхностей (Specular)
+                    vec3 ref = reflect(-lightDir, n);
+                    float spec = pow(max(dot(ref, -rd), 0.0), 16.0);
+                    color += vec3(0.8, 0.9, 1.0) * spec * atten * 1.5;
+
+                    // Генерация неонового свечения био-жидкости на полу пещеры
+                    if (p.y < -2.2) {
+                        // Яркая бирюзово-зеленая река
+                        vec3 neonColor = mix(vec3(0.0, 1.0, 0.6), vec3(0.0, 0.4, 1.0), sin(p.z*0.2 + u_time)*0.5+0.5);
+                        color += neonColor * 2.0 * (1.0 - smoothstep(-2.5, -2.2, p.y));
+                    }
+                    
+                    // Отражение неонового пола на стенах пещеры снизу
+                    float floorGlow = max(0.0, -n.y) * 0.4 * (1.0 / (1.0 + (p.y + 2.5)*(p.y + 2.5)));
+                    color += vec3(0.0, 0.8, 0.5) * floorGlow;
+                }
+
+                // Эффект объемного густого тумана в глубине каньона (атмосферное рассеяние)
+                color = mix(color, vec3(0.02, 0.03, 0.06), 1.0 - exp(-0.07 * t * t));
+                
+                // Кинематографическая гамма-коррекция (делает картинку сочной)
+                color = pow(color, vec3(0.4545));
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, vsSource); gl.compileShader(vs);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, fsSource); gl.compileShader(fs);
+        const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+        gl.useProgram(prog);
+
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+        const pos = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(pos);
+        gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+        const uRes = gl.getUniformLocation(prog, "u_res");
+        const uTime = gl.getUniformLocation(prog, "u_time");
+
+        function render(time) {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uRes, canvas.width, canvas.height);
+            gl.uniform1f(uTime, time * 0.001);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
             requestAnimationFrame(render);
         }
-
-        // Стартовый запуск
         requestAnimationFrame(render);
     </script>
 </body>
