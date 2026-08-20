@@ -2,9 +2,9 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Solar System 3D Demo</title>
+    <title>Digital Evolution: Neo-Fractal</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #030208; width: 100%; height: 100%; }
         canvas { width: 100vw; height: 100vh; display: block; }
     </style>
 </head>
@@ -14,175 +14,99 @@
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
 
-        // Данные планет: [радиус сферы, радиус орбиты, скорость орбиты, скорость оси, цвет]
-        const planets = [
-            { name: "Меркурий", r: 4,  dist: 60,  vOrb: 0.04,  vAx: 0.01,  c: "#888" },
-            { name: "Венера",   r: 7,  dist: 90,  vOrb: 0.015, vAx: 0.002, c: "#e3bb76" },
-            { name: "Земля",    r: 8,  dist: 130, vOrb: 0.01,  vAx: 0.05,  c: "#5391f5" },
-            { name: "Марс",     r: 6,  dist: 170, vOrb: 0.008, vAx: 0.04,  c: "#c1440e" },
-            { name: "Юпитер",   r: 18, dist: 230, vOrb: 0.002, vAx: 0.1,   c: "#b07f35" },
-            { name: "Сатурн",   r: 15, dist: 290, vOrb: 0.0009,vAx: 0.09,  c: "#e2bf7d", ring: true },
-            { name: "Уран",     r: 11, dist: 340, vOrb: 0.0004,vAx: 0.07,  c: "#4b70dd" },
-            { name: "Нептун",   r: 10, dist: 390, vOrb: 0.0001,vAx: 0.07,  c: "#274687" }
-        ];
+        let time = 0;
+        
+        // Генетические параметры биоморфа (меняются в ходе «эволюции»)
+        let genes = {
+            angleStep: 0.4,
+            lengthRatio: 0.75,
+            maxDepth: 10,
+            hueBase: 180,
+            pulseSpeed: 1.2
+        };
 
-        // Генерация звезд Галактики на фоне (псевдо-3D)
-        const stars = [];
-        for(let i=0; i<600; i++) {
-            // Распределяем звезды в форме спиральной галактики
-            let angle = Math.random() * Math.PI * 2;
-            let dist = Math.pow(Math.random(), 2) * 500 + 10;
-            let spiral = angle + dist * 0.015; 
-            stars.push({
-                x: Math.cos(spiral) * dist + (Math.random() - 0.5) * 20,
-                y: (Math.random() - 0.5) * 30, // Сплюснутость галактики по вертикали
-                z: Math.sin(spiral) * dist + (Math.random() - 0.5) * 20,
-                size: Math.random() * 1.5 + 0.5
-            });
+        // Плавное изменение генов со временем (мутация)
+        function mutateGenes(t) {
+            genes.angleStep = 0.35 + Math.sin(t * 0.2) * 0.15 + Math.cos(t * 0.05) * 0.1;
+            genes.lengthRatio = 0.72 + Math.sin(t * 0.1) * 0.04;
+            genes.maxDepth = 9 + Math.floor((Math.sin(t * 0.05) + 1) * 1.5); // Дерево растет и усложняется
+            genes.hueBase = (t * 10) % 360; // Плавная мутация цвета структуры
         }
 
-        let time = 0;
+        // Рекурсивная функция выращивания фрактального биоморфа
+        function drawBranch(x, y, length, angle, depth, pulse) {
+            if (depth > genes.maxDepth) return;
 
-        function drawSphere(x, y, r, color, rotationAngle) {
-            // Отрисовка сферы с мягкой 3D-тенями (объем)
-            ctx.save();
+            // Вычисляем конечную точку ветви с учетом био-пульсации
+            const dynamicLength = length * (1 + Math.sin(time * genes.pulseSpeed + depth) * pulse);
+            const x2 = x + Math.cos(angle) * dynamicLength;
+            const y2 = y + Math.sin(angle) * dynamicLength;
+
+            // Динамический неоновый цвет для каждого уровня вложенности
+            const branchHue = (genes.hueBase + depth * 15) % 360;
+            const alpha = 1.0 - (depth / genes.maxDepth) * 0.6; // Прозрачность к кончикам
+            
             ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.clip();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x2, y2);
+            
+            // Толщина уменьшается с ростом глубины
+            ctx.lineWidth = Math.max(0.5, (genes.maxDepth - depth) * 0.8);
+            ctx.strokeStyle = `hsla(${branchHue}, 90%, 65%, ${alpha})`;
+            ctx.shadowColor = `hsl(${branchHue}, 100%, 50%)`;
+            ctx.shadowBlur = depth < 4 ? 15 : 0; // Свечение только на основных ветвях для оптимизации
+            ctx.stroke();
 
-            // Базовый цвет планеты
-            ctx.fillStyle = color;
-            ctx.fill();
+            // Генетическое ветвление: порождаем новые цифровые побеги
+            // Добавляем легкую асимметрию за счет времени
+            const angleOffset = genes.angleStep + Math.sin(time * 0.5 + depth) * 0.03;
 
-            // Текстурные полосы, показывающие вращение вокруг своей оси
-            ctx.strokeStyle = "rgba(0,0,0,0.15)";
-            ctx.lineWidth = r * 0.15;
-            ctx.setLineDash([r * 0.4, r * 0.3]);
-            for (let i = -r; i < r; i += r * 0.4) {
-                ctx.beginPath();
-                ctx.arc(x + Math.sin(rotationAngle)*r*0.2, y + i, r, 0, Math.PI, true);
-                ctx.stroke();
+            // Левая ветвь
+            drawBranch(x2, y2, length * genes.lengthRatio, angle - angleOffset, depth + 1, pulse);
+            // Правая ветвь
+            drawBranch(x2, y2, length * genes.lengthRatio, angle + angleOffset, depth + 1, pulse);
+            
+            // Центральный редкий побег (эффект усложнения мутации на пике эволюции)
+            if (depth > 3 && depth % 3 === 0) {
+                drawBranch(x2, y2, length * 0.4, angle + Math.sin(time)*0.1, depth + 2, pulse);
             }
-
-            // Наложение объемной тени от Солнца
-            let shadow = ctx.createRadialGradient(x - r*0.3, y - r*0.3, r*0.1, x, y, r);
-            shadow.addColorStop(0, "rgba(255,255,255,0.2)");
-            shadow.addColorStop(0.5, "rgba(0,0,0,0)");
-            shadow.addColorStop(1, "rgba(0,0,0,0.9)");
-            ctx.fillStyle = shadow;
-            ctx.beginPath();
-            ctx.arc(x, y, r + 1, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
         }
 
         function render() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            
-            const cx = canvas.width / 2;
-            const cy = canvas.height / 2;
-            
-            // Наклон всей системы для кинематографичного 3D вида (псевдо-3D проекция)
-            const tiltCos = Math.cos(1.1); 
-            const tiltSin = Math.sin(1.1);
+            time += 0.015;
 
-            // Очистка экрана
-            ctx.fillStyle = "#020208";
+            // Шлейф старых кадров для эффекта размытия движения (motion blur)
+            ctx.fillStyle = "rgba(3, 2, 8, 0.08)";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 1. Рисуем Млечный Путь (Галактику) на заднем плане
-            time += 0.02;
-            stars.forEach(s => {
-                // Медленное вращение галактики
-                let rotX = s.x * Math.cos(time * 0.05) - s.z * Math.sin(time * 0.05);
-                let rotZ = s.x * Math.sin(time * 0.05) + s.z * Math.cos(time * 0.05);
-                
-                // Проекция в 2D
-                let screenX = cx + rotX;
-                let screenY = cy + s.y * tiltCos - rotZ * tiltSin;
-                
-                let alpha = Math.max(0.1, 1 - (dist = Math.sqrt(rotX*rotX + rotZ*rotZ)) / 500);
-                ctx.fillStyle = `rgba(200, 220, 255, ${alpha})`;
-                ctx.fillRect(screenX, screenY, s.size, s.size);
-            });
+            // Запускаем мутацию ДНК фрактала
+            mutateGenes(time);
 
-            // 2. Рисуем пылающее Солнце
-            let sunGlow = ctx.createRadialGradient(cx, cy, 5, cx, cy, 45);
-            sunGlow.addColorStop(0, "#fff");
-            sunGlow.addColorStop(0.2, "#ffdd44");
-            sunGlow.addColorStop(0.6, "rgba(255,68,0,0.4)");
-            sunGlow.addColorStop(1, "rgba(0,0,0,0)");
-            ctx.fillStyle = sunGlow;
-            ctx.beginPath();
-            ctx.arc(cx, cy, 45, 0, Math.PI * 2);
-            ctx.fill();
+            const startX = canvas.width / 2;
+            const startY = canvas.height * 0.82; // Точка роста
+            const initialLength = Math.min(canvas.width, canvas.height) * 0.18;
 
-            // 3. Расчет и отрисовка орбит и планет
-            // Сортируем планеты по глубине (Z), чтобы ближние перекрывали дальние
-            const renderQueue = [];
+            // Сброс тени перед отрисовкой во избежание багов холста
+            ctx.shadowBlur = 0; 
 
-            planets.forEach(p => {
-                // Угол положения на орбите
-                let angle = time * p.vOrb;
-                
-                // 3D Координаты в пространстве системы
-                let x3d = Math.cos(angle) * p.dist;
-                let z3d = Math.sin(angle) * p.dist;
-                let y3d = 0; 
+            // Рисуем светящиеся споры на фоне (цифровая питательная среда)
+            ctx.fillStyle = `rgba(255, 255, 255, 0.15)`;
+            for(let i = 0; i < 15; i++) {
+                let sX = (Math.sin(i * 123 + time * 0.2) * 0.5 + 0.5) * canvas.width;
+                let sY = (Math.cos(i * 456 + time * 0.3) * 0.5 + 0.5) * canvas.height;
+                ctx.fillRect(sX, sY, 1.5, 1.5);
+            }
 
-                // Проекция координат с учетом наклона камеры
-                let screenX = cx + x3d;
-                let screenY = cy + y3d * tiltCos - z3d * tiltSin;
-
-                renderQueue.push({
-                    x: screenX,
-                    y: screenY,
-                    z: z3d, // Используем для сортировки слоев
-                    r: p.r,
-                    color: p.c,
-                    rot: time * p.vAx,
-                    hasRing: p.ring,
-                    dist: p.dist
-                });
-
-                // Отрисовка тонких линий орбит
-                ctx.beginPath();
-                ctx.ellipse(cx, cy, p.dist, p.dist * tiltSin, 0, 0, Math.PI * 2);
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            });
-
-            // Сортировка: сначала рисуем то, что сзади (z3d < 0), потом то, что спереди (z3d > 0)
-            renderQueue.sort((a, b) => a.z - b.z);
-
-            renderQueue.forEach(p => {
-                // Если планета с кольцами (Сатурн), рисуем заднюю часть колец
-                if (p.hasRing) {
-                    ctx.strokeStyle = "rgba(210, 180, 140, 0.5)";
-                    ctx.lineWidth = 4;
-                    ctx.beginPath();
-                    ctx.ellipse(p.x, p.y, p.r * 1.8, p.r * 0.4, 0.2, Math.PI, 0);
-                    ctx.stroke();
-                }
-
-                // Рисуем саму планету с вращением
-                drawSphere(p.x, p.y, p.r, p.color, p.rot);
-
-                // Передняя часть колец Сатурна (чтобы перекрывала планету)
-                if (p.hasRing) {
-                    ctx.strokeStyle = "rgba(210, 180, 140, 0.8)";
-                    ctx.lineWidth = 4;
-                    ctx.beginPath();
-                    ctx.ellipse(p.x, p.y, p.r * 1.8, p.r * 0.4, 0.2, 0, Math.PI);
-                    ctx.stroke();
-                }
-            });
+            // Выращиваем биоморф вверх (-Math.PI / 2)
+            // Коэффициент пульсации 0.08 задает амплитуду "дыхания"
+            drawBranch(startX, startY, initialLength, -Math.PI / 2, 0, 0.08);
 
             requestAnimationFrame(render);
         }
 
+        // Стартовый запуск
         requestAnimationFrame(render);
     </script>
 </body>
