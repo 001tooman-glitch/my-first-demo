@@ -2,34 +2,123 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Realistic 3D Universe Flight</title>
+    <title>Realistic 3D Universe Flight + Synthwave Sound</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
-        canvas { width: 100vw; height: 100vh; display: block; }
+        canvas { width: 100vw; height: 100vh; display: block; cursor: pointer; }
+        #msg { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: #fff; font-family: sans-serif; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 20px; border: 1px solid #ff007f; pointer-events: none; transition: opacity 0.5s; text-shadow: 0 0 10px #ff007f; }
     </style>
 </head>
 <body>
+    <div id="msg">Кликните по экрану для запуска Synthwave музыки</div>
     <canvas id="c"></canvas>
     <script>
         const canvas = document.getElementById('c');
         const gl = canvas.getContext('webgl');
 
-        const vsSource = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+        // --- ПРОЦЕДУРНЫЙ СИНТЕЗАТОР МУЗЫКИ ---
+        let audioStarted = false;
+        
+        function initAudio() {
+            if (audioStarted) return;
+            audioStarted = true;
+            document.getElementById('msg').style.opacity = '0';
 
-        // Шейдер объемного рендеринга глубокого космоса (Volume Rendering / Raymarching)
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Ноты для синтвейв-баса и неоновой мелодии (в Гёрцах)
+            const BASS_NOTES = [55.00, 55.00, 48.99, 41.20]; // A1, A1, G1, E1
+            const LEAD_NOTES = [220.00, 261.63, 329.63, 392.00, 440.00, 392.00, 329.63, 261.63]; // Мелодия Am
+
+            let step = 0;
+            const tempo = 125; // Удары в минуту (BPM)
+            const stepDuration = 60 / tempo / 2; // Восьмые ноты
+
+            function playStep() {
+                const now = audioCtx.currentTime;
+
+                // 1. Плотный синтезаторный БАС (Пилообразная волна)
+                if (step % 2 === 0) {
+                    const bassOsc = audioCtx.createOscillator();
+                    const bassGain = audioCtx.createGain();
+                    
+                    bassOsc.type = 'sawtooth';
+                    // Меняем бас каждые 16 шагов
+                    bassOsc.frequency.setValueAtTime(BASS_NOTES[Math.floor(step / 16) % BASS_NOTES.length], now);
+                    
+                    // Обволакивающая громкость для баса (быстрая атака и затухание)
+                    bassGain.gain.setValueAtTime(0.25, now);
+                    bassGain.gain.exponentialRampToValueAtTime(0.01, now + stepDuration * 1.8);
+                    
+                    // Простейший НЧ-фильтр, чтобы бас звучал "жирно" и по-подземному
+                    const filter = audioCtx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(400, now);
+
+                    bassOsc.connect(bassGain);
+                    bassGain.connect(filter);
+                    filter.connect(audioCtx.destination);
+                    
+                    bassOsc.start(now);
+                    bassOsc.stop(now + stepDuration * 1.8);
+                }
+
+                // 2. Космическая МЕЛОДИЯ (Квадратная ретро-волна с эхом)
+                if (step % 4 === 0 || (step % 6 === 0 && Math.random() > 0.4)) {
+                    const leadOsc = audioCtx.createOscillator();
+                    const leadGain = audioCtx.createGain();
+                    
+                    leadOsc.type = 'square';
+                    // Выбираем ноту из паттерна на основе шага
+                    let noteIdx = (step / 4) % LEAD_NOTES.length;
+                    leadOsc.frequency.setValueAtTime(LEAD_NOTES[noteIdx], now);
+                    
+                    leadGain.gain.setValueAtTime(0.06, now);
+                    leadGain.gain.exponentialRampToValueAtTime(0.001, now + stepDuration * 3.0);
+
+                    // Эффект космического ревера/дилея (простая задержка)
+                    const delay = audioCtx.createDelay();
+                    delay.delayTime.setValueAtTime(0.18, now);
+                    const delayGain = audioCtx.createGain();
+                    delayGain.gain.setValueAtTime(0.3, now);
+
+                    leadOsc.connect(leadGain);
+                    leadGain.connect(audioCtx.destination);
+                    
+                    // Направляем хвост звука в дилей
+                    leadGain.connect(delay);
+                    delay.connect(delayGain);
+                    delayGain.connect(audioCtx.destination);
+
+                    leadOsc.start(now);
+                    leadOsc.stop(now + stepDuration * 3.0);
+                }
+
+                step++;
+                // Планируем следующий музыкальный шаг строго по таймеру
+                setTimeout(playStep, stepDuration * 1000);
+            }
+
+            playStep();
+        }
+
+        window.addEventListener('click', initAudio);
+        window.addEventListener('touchstart', initAudio);
+
+
+        // --- ВИЗУАЛЬНЫЙ ШЕЙДЕР КОСМОСА ---
+        const vsSource = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
         const fsSource = `
             precision highp float;
             uniform vec2 u_res;
             uniform float u_time;
 
-            // Хэш-функция для генерации звездной пыли
             float hash(vec3 p) {
                 p = fract(p * vec3(443.8975, 397.2973, 491.1871));
                 p += dot(p.xyz, p.yzx + 19.19);
                 return fract(p.x * p.y * p.z);
             }
 
-            // Трехмерный сглаженный шум
             float noise(vec3 p) {
                 vec3 i = floor(p); vec3 f = fract(p);
                 f = f*f*(3.0-2.0*f);
@@ -39,7 +128,6 @@
                                mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
             }
 
-            // Фрактальный шум для создания реалистичных газовых облаков и туманностей
             float fbm(vec3 p) {
                 float v = 0.0;
                 float amplitude = 0.5;
@@ -53,71 +141,51 @@
 
             void main() {
                 vec2 uv = (gl_FragCoord.xy - u_res * 0.5) / u_res.y;
-                
-                // Скорость движения сквозь вселенную
-                float speed = u_time * 1.8;
-                
-                // Камера летит вперед с легким покачиванием
+                float speed = u_time * 2.2; // Чуть ускорили полет под ритм
                 vec3 ro = vec3(sin(u_time * 0.2) * 0.8, cos(u_time * 0.15) * 0.5, speed);
-                vec3 rd = normalize(vec3(uv, 1.1)); // Луч из камеры в пространство
+                vec3 rd = normalize(vec3(uv, 1.1));
 
-                // Вращение камеры вокруг оси Z для кинематографичности эффекта полета
                 float roll = u_time * 0.05;
                 mat2 rot = mat2(cos(roll), -sin(roll), sin(roll), cos(roll));
                 rd.xy *= rot;
 
-                // Базовый цвет космоса
                 vec3 finalColor = vec3(0.0);
                 
-                // 1. Сверхдальний план: Математические мерцающие звезды
                 float stars = hash(floor(rd * 350.0));
                 if (stars > 0.994) {
                     float m = sin(u_time * 3.0 + stars * 100.0) * 0.5 + 0.5;
-                    finalColor += vec3(stars) * m * 0.8; // Мерцание звезд
+                    finalColor += vec3(stars) * m * 0.8;
                 }
 
-                // 2. Объемный маршинг (Volume Rendering) сквозь космические туманности
                 float t = 0.0;
                 float maxDist = 12.0;
-                float stepSize = 0.25; // Размер шага по газу
+                float stepSize = 0.25;
                 
-                vec3 nebulaColor1 = vec3(0.1, 0.4, 0.9); // Синий неон
-                vec3 nebulaColor2 = vec3(0.9, 0.1, 0.5); // Пурпурный космос
+                vec3 nebulaColor1 = vec3(0.1, 0.3, 0.9); 
+                vec3 nebulaColor2 = vec3(0.9, 0.0, 0.6); // Более неоновый фиолетовый
 
                 for (int i = 0; i < 40; i++) {
                     if (t > maxDist) break;
-                    
                     vec3 p = ro + rd * t;
-                    
-                    // Вычисляем плотность космического газа в этой точке пространства
                     float density = fbm(p * 0.4 + vec3(0.0, 0.0, -u_time * 0.05));
-                    
-                    // Отрезаем пустоты, оставляя только сочные скопления облаков
                     density = smoothstep(0.42, 0.7, density);
 
                     if (density > 0.01) {
-                        // Динамический цвет туманности, зависящий от координат пространства
-                        vec3 currentNebula = mix(nebulaColor1, nebulaColor2, sin(p.z * 0.2) * 0.5 + 0.5);
-                        
-                        // Добавляем эффект внутреннего свечения звездных скоплений внутри облака
-                        currentNebula += vec3(1.0, 0.7, 0.4) * (noise(p * 3.0) * 0.4);
-
-                        // Интегрируем плотность газа (свет накапливается, создавая объем)
-                        float alpha = density * stepSize * 1.2;
+                        vec3 currentNebula = mix(nebulaColor1, nebulaColor2, sin(p.z * 0.25) * 0.5 + 0.5);
+                        currentNebula += vec3(1.0, 0.6, 0.5) * (noise(p * 3.0) * 0.4);
+                        float alpha = density * stepSize * 1.3;
                         finalColor += currentNebula * alpha * (1.0 - t / maxDist);
                     }
-                    
                     t += stepSize;
                 }
 
-                // Реалистичная цветокоррекция (контраст глубокого космоса)
                 finalColor = smoothstep(0.0, 1.0, finalColor);
-                finalColor = pow(finalColor, vec3(0.4545)); // Гамма
-
+                finalColor = pow(finalColor, vec3(0.4545));
                 gl_FragColor = vec4(finalColor, 1.0);
             }
         `;
 
+        // Сборка шейдеров WebGL
         const vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, vsSource); gl.compileShader(vs);
         const fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, fsSource); gl.compileShader(fs);
         const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
